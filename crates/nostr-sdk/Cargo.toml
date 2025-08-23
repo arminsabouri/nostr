@@ -39,6 +39,11 @@ nostr = { workspace = true, features = ["std"] }
 nostr-database.workspace = true
 nostr-relay-pool.workspace = true
 tokio = { workspace = true, features = ["sync"] }
+ohttp = { package = "bitcoin-ohttp", version = "0.6.0" }
+bhttp = "0.6.1"
+bech32 = { version = "0.11", default-features = false }
+anyhow = "1.0"
+reqwest = "0.12.23"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 nostr-lmdb = { workspace = true, optional = true }
@@ -107,3 +112,7 @@ required-features = ["lmdb"]
 
 [[example]]
 name = "whitelist"
+
+[[example]]
+name = "ohttp"
+required-features = ["all-nips"]
