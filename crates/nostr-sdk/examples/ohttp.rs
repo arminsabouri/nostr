@@ -126,6 +126,7 @@ pub async fn fetch_ohttp_keys(
     ohttp_relay: String,
     target: String,
 ) -> Result<OhttpKeys, anyhow::Error> {
+    // TODO: need to route this request from the relay to the target
     let target_url = url::Url::parse(&target)?.join("/ohttp-keys")?;
     let client = reqwest::Client::builder().build()?;
     let res = client
@@ -150,6 +151,7 @@ async fn main() -> Result<()> {
     let target = "http://localhost:8080".to_string();
     let ohttp_relay = "http://localhost:3000".to_string();
     let mut key_config = fetch_ohttp_keys(ohttp_relay.clone(), target.clone()).await?;
+    let client = reqwest::Client::new();
     println!("{key_config:#?}");
 
     let now = Timestamp::now();
@@ -166,30 +168,45 @@ async fn main() -> Result<()> {
         Some(client_message.as_bytes()),
     )?;
 
-    let hash = sha256::Hash::hash(&encapsulated);
-    println!("Hash: {:?}", hash);
-
-    let ohttp_relay_url = "http://localhost:3000";
-    let client = reqwest::Client::new();
     let response = client
-        .post(ohttp_relay_url)
+        .post(ohttp_relay.clone())
         .header("Content-Type", "message/ohttp-req")
         .body(encapsulated.to_vec())
         .send()
         .await?;
     println!("{response:#?}");
 
-    // Not using a relay, just sending the event to the relay directly
     let pk = ephemeral_key.public_key;
-    let client = Client::default();
-    client.add_relay("ws://localhost:8080").await?;
-    client.connect().await;
-
     let filter = Filter::new().author(pk).kind(Kind::TextNote);
-    let events = client.fetch_events(filter, Duration::from_secs(10)).await?;
-    println!("{events:#?}");
+    let subscription_id = SubscriptionId::generate();
 
-    client.disconnect().await;
+    let client_message = ClientMessage::Req {
+        subscription_id: Cow::Borrowed(&subscription_id),
+        filter: Cow::Borrowed(&filter),
+    }
+    .as_json();
+    let (encapsulated, ohttp_ctx) = ohttp_encapsulate(
+        &mut key_config.0,
+        "POST",
+        &target,
+        Some(client_message.as_bytes()),
+    )?;
+
+    let response = client
+        .post(ohttp_relay)
+        .header("Content-Type", "message/ohttp-req")
+        .body(encapsulated.to_vec())
+        .send()
+        .await?;
+    println!("{response:#?}");
+
+    let response_body = response.bytes().await?;
+
+    let decapsulated = ohttp_ctx.decapsulate(&response_body)?;
+    let str_res = String::from_utf8(decapsulated)?;
+    let events = str_res.split("\n").map(|s| Event::from_json(s)).filter_map(Result::ok).collect::<Vec<Event>>();
+    println!("{events:#?}");
+    assert_eq!(events.len(), 1);
 
     Ok(())
 }
