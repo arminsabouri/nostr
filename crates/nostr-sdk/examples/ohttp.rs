@@ -174,7 +174,11 @@ async fn main() -> Result<()> {
         .body(encapsulated.to_vec())
         .send()
         .await?;
-    println!("{response:#?}");
+    // Test if we can decrypt the response
+    let response_body = response.bytes().await?;
+    let decapsulated = ohttp_ctx.decapsulate(&response_body)?;
+    let str_res = String::from_utf8(decapsulated)?;
+    println!("{str_res:#?}");
 
     let pk = ephemeral_key.public_key;
     let filter = Filter::new().author(pk).kind(Kind::TextNote);
@@ -187,7 +191,7 @@ async fn main() -> Result<()> {
     .as_json();
     let (encapsulated, ohttp_ctx) = ohttp_encapsulate(
         &mut key_config.0,
-        "POST",
+        "GET",
         &target,
         Some(client_message.as_bytes()),
     )?;
