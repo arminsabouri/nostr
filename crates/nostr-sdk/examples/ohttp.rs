@@ -208,9 +208,13 @@ async fn main() -> Result<()> {
 
     let decapsulated = ohttp_ctx.decapsulate(&response_body)?;
     let str_res = String::from_utf8(decapsulated)?;
-    let events = str_res.split("\n").map(|s| Event::from_json(s)).filter_map(Result::ok).collect::<Vec<Event>>();
+    let events = str_res
+        .split("\n")
+        .map(|s| Event::from_json(s))
+        .filter_map(Result::ok)
+        .collect::<Vec<Event>>();
     println!("{events:#?}");
-    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].id(), event.id());
 
     Ok(())
 }
