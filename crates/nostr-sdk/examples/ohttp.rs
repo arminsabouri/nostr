@@ -86,12 +86,11 @@ pub fn ohttp_encapsulate(
     ohttp_keys: &mut KeyConfig,
     method: &str,
     target_resource: &str,
-    body: Option<&[u8]>,
+    body: String,
 ) -> Result<([u8; ENCAPSULATED_MESSAGE_BYTES], ohttp::ClientResponse), anyhow::Error> {
     use std::fmt::Write;
-
     let ctx = ohttp::ClientRequest::from_config(ohttp_keys)?;
-    let url = url::Url::parse(target_resource)?;
+    let mut url = url::Url::parse(&target_resource)?;
     println!("url: {:?}", url);
     let authority_bytes = url.host().map_or_else(Vec::new, |host| {
         let mut authority = host.to_string();
@@ -100,15 +99,18 @@ pub fn ohttp_encapsulate(
         }
         authority.into_bytes()
     });
+
+    let path = format!("/?message={}", hex::encode(body.as_bytes()));
+
     let mut bhttp_message = bhttp::Message::request(
         method.as_bytes().to_vec(),
         url.scheme().as_bytes().to_vec(),
         authority_bytes,
-        url.path().as_bytes().to_vec(),
+        path.as_bytes().to_vec(),
     );
     // None of our messages include headers, so we don't add them
-    if let Some(body) = body {
-        bhttp_message.write_content(body);
+    if method != "GET" {
+        bhttp_message.write_content(body.as_bytes());
     }
 
     let mut bhttp_req = [0u8; PADDED_BHTTP_REQ_BYTES];
@@ -161,12 +163,8 @@ async fn main() -> Result<()> {
 
     let client_message = ClientMessage::Event(Cow::Borrowed(&event)).as_json();
 
-    let (encapsulated, ohttp_ctx) = ohttp_encapsulate(
-        &mut key_config.0,
-        "POST",
-        &target,
-        Some(client_message.as_bytes()),
-    )?;
+    let (encapsulated, ohttp_ctx) =
+        ohttp_encapsulate(&mut key_config.0, "POST", &target, client_message)?;
 
     let response = client
         .post(ohttp_relay.clone())
@@ -189,12 +187,8 @@ async fn main() -> Result<()> {
         filter: Cow::Borrowed(&filter),
     }
     .as_json();
-    let (encapsulated, ohttp_ctx) = ohttp_encapsulate(
-        &mut key_config.0,
-        "GET",
-        &target,
-        Some(client_message.as_bytes()),
-    )?;
+    let (encapsulated, ohttp_ctx) =
+        ohttp_encapsulate(&mut key_config.0, "GET", &target, client_message)?;
 
     let response = client
         .post(ohttp_relay)
@@ -214,7 +208,7 @@ async fn main() -> Result<()> {
         .filter_map(Result::ok)
         .collect::<Vec<Event>>();
     println!("{events:#?}");
-    assert_eq!(events[0].id(), event.id());
+    assert_eq!(events[0].id, event.id);
 
     Ok(())
 }
