@@ -97,7 +97,7 @@ pub fn ohttp_encapsulate(
         authority.into_bytes()
     });
 
-    let path = format!("/?message={}", hex::encode(body.as_bytes()));
+    let path = format!("/?filter={}", hex::encode(body.as_bytes()));
 
     let mut bhttp_message = bhttp::Message::request(
         method.as_bytes().to_vec(),
