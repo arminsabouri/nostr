@@ -2,19 +2,16 @@
 // Copyright (c) 2023-2025 Rust Nostr Developers
 // Distributed under the MIT software license
 
-use std::{borrow::Cow, fmt, str::FromStr, time::Duration};
+use std::borrow::Cow;
 
 use anyhow::Result;
 use bech32::{self, primitives::decode::CheckedHrpstring, Hrp, NoChecksum};
 use bhttp;
-use nostr::{
-    hashes::{sha256, Hash},
-    secp256k1::rand::RngCore,
-};
+use nostr::{hashes::sha256, secp256k1::rand::RngCore};
 use nostr_sdk::prelude::*;
 use ohttp::{self, KeyConfig};
 use rand::rngs::OsRng;
-use reqwest::{header::ACCEPT, Proxy};
+use reqwest::header::ACCEPT;
 
 pub fn decode(encoded: &str) -> (Hrp, Vec<u8>) {
     let hrp_string = CheckedHrpstring::new::<NoChecksum>(encoded).unwrap();
@@ -90,7 +87,7 @@ pub fn ohttp_encapsulate(
 ) -> Result<([u8; ENCAPSULATED_MESSAGE_BYTES], ohttp::ClientResponse), anyhow::Error> {
     use std::fmt::Write;
     let ctx = ohttp::ClientRequest::from_config(ohttp_keys)?;
-    let mut url = url::Url::parse(&target_resource)?;
+    let url = url::Url::parse(&target_resource)?;
     println!("url: {:?}", url);
     let authority_bytes = url.host().map_or_else(Vec::new, |host| {
         let mut authority = host.to_string();
@@ -158,10 +155,11 @@ async fn main() -> Result<()> {
 
     let now = Timestamp::now();
     let event = EventBuilder::text_note(format!("foooo baar over OHTTP ! {now}"))
-        .sign_with_keys(&ephemeral_key)
-        .unwrap();
-
-    let client_message = ClientMessage::Event(Cow::Borrowed(&event)).as_json();
+        .build(ephemeral_key.public_key);
+    // Gift wrap to my self
+    let gift_wrap =
+        EventBuilder::gift_wrap(&ephemeral_key, &ephemeral_key.public_key, event, vec![]).await?;
+    let client_message = ClientMessage::Event(Cow::Borrowed(&gift_wrap)).as_json();
 
     let (encapsulated, ohttp_ctx) =
         ohttp_encapsulate(&mut key_config.0, "POST", &target, client_message)?;
@@ -178,8 +176,9 @@ async fn main() -> Result<()> {
     let str_res = String::from_utf8(decapsulated)?;
     println!("{str_res:#?}");
 
-    let pk = ephemeral_key.public_key;
-    let filter = Filter::new().author(pk).kind(Kind::TextNote);
+    let filter = Filter::new()
+        .kind(Kind::GiftWrap)
+        .pubkey(ephemeral_key.public_key);
     let subscription_id = SubscriptionId::generate();
 
     let client_message = ClientMessage::Req {
@@ -208,7 +207,7 @@ async fn main() -> Result<()> {
         .filter_map(Result::ok)
         .collect::<Vec<Event>>();
     println!("{events:#?}");
-    assert_eq!(events[0].id, event.id);
+    assert_eq!(events[0].id, gift_wrap.id);
 
     Ok(())
 }
