@@ -126,7 +126,7 @@ pub async fn fetch_ohttp_keys(
     target: String,
 ) -> Result<OhttpKeys, anyhow::Error> {
     // TODO: need to route this request from the relay to the target
-    let target_url = url::Url::parse(&target)?.join("/ohttp-keys")?;
+    let target_url = url::Url::parse(&target)?.join("/.well-known/ohttp-gateway")?;
     let client = reqwest::Client::builder().build()?;
     let res = client
         .get(target_url)
