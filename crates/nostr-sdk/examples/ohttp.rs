@@ -2,12 +2,12 @@
 // Copyright (c) 2023-2025 Rust Nostr Developers
 // Distributed under the MIT software license
 
-use std::borrow::Cow;
+use std::{borrow::Cow, time::Duration};
 
 use anyhow::Result;
 use bech32::{self, primitives::decode::CheckedHrpstring, Hrp, NoChecksum};
 use bhttp;
-use nostr::{hashes::sha256, secp256k1::rand::RngCore};
+use nostr::{secp256k1::rand::RngCore};
 use nostr_sdk::prelude::*;
 use ohttp::{self, KeyConfig};
 use rand::rngs::OsRng;
@@ -88,7 +88,6 @@ pub fn ohttp_encapsulate(
     use std::fmt::Write;
     let ctx = ohttp::ClientRequest::from_config(ohttp_keys)?;
     let url = url::Url::parse(&target_resource)?;
-    println!("url: {:?}", url);
     let authority_bytes = url.host().map_or_else(Vec::new, |host| {
         let mut authority = host.to_string();
         if let Some(port) = url.port() {
@@ -122,20 +121,24 @@ pub fn ohttp_encapsulate(
 }
 
 pub async fn fetch_ohttp_keys(
-    ohttp_relay: String,
+    _ohttp_relay: String,
     target: String,
 ) -> Result<OhttpKeys, anyhow::Error> {
-    // TODO: need to route this request from the relay to the target
-    let target_url = url::Url::parse(&target)?.join("/.well-known/ohttp-gateway")?;
-    let client = reqwest::Client::builder().build()?;
+    // TODO: proxy key fetching via the ohttp relay
+    // OHTTP gateways typically expose keys at /ohttp-configs endpoint
+    let gateway_url = url::Url::parse(&target)?.join("/.well-known/ohttp-gateway")?;
+    let client = reqwest::ClientBuilder::new().build()?;
     let res = client
-        .get(target_url)
+        .get(gateway_url)
         .header(ACCEPT, "application/ohttp-keys")
+        .timeout(Duration::from_secs(10))
         .send()
         .await?;
     if !res.status().is_success() {
-        println!("{res:#?}");
-        return Err(anyhow::anyhow!("unexpected status code"));
+        println!("Gateway response: {res:#?}");
+        let error_text = res.text().await?;
+        println!("Error body: {}", error_text);
+        return Err(anyhow::anyhow!("Failed to fetch OHTTP keys: status "));
     }
 
     let body = res.bytes().await?.to_vec();
